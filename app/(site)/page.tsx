@@ -69,13 +69,16 @@ export default async function HomePage() {
           boxSizing: "border-box",
         }}
       >
-        <div style={{ aspectRatio: 1, width: "100%" }}>
+        <Link
+          href={`/reviews/${featured.slug}`}
+          style={{ display: "block", aspectRatio: 1, width: "100%" }}
+        >
           <ImageSlot
             radius={8}
             label="Featured album art"
             src={getArtworkUrl(featured.artPath)}
           />
-        </div>
+        </Link>
         <div
           style={{
             display: "flex",
@@ -142,6 +145,7 @@ export default async function HomePage() {
         </div>
       </header>
 
+      {latest.length > 0 && (
       <main
         style={{
           padding: "clamp(24px, 5vw, 48px)",
@@ -235,7 +239,9 @@ export default async function HomePage() {
           ))}
         </div>
       </main>
+      )}
 
+      {archive.length > 0 && (
       <section
         style={{
           padding: "0 var(--gutter) 56px",
@@ -347,6 +353,7 @@ export default async function HomePage() {
           ))}
         </div>
       </section>
+      )}
     </>
   );
 }
