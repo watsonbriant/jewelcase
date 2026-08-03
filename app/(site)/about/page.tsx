@@ -1,5 +1,5 @@
 import { DiscRating } from "@/components/DiscRating";
-import { ImageSlot } from "@/components/ImageSlot";
+import { LogoMark } from "@/components/Logo";
 import { ratingTiers } from "@/lib/constants";
 
 export const metadata = { title: "About" };
@@ -241,8 +241,19 @@ export default function AboutPage() {
             gap: 20,
           }}
         >
-          <div style={{ width: "100%", aspectRatio: 1 }}>
-            <ImageSlot radius={12} label="Your photo" />
+          <div
+            style={{
+              width: "100%",
+              aspectRatio: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "var(--panel)",
+              border: "1px solid var(--line)",
+              borderRadius: 12,
+            }}
+          >
+            <LogoMark size={200} />
           </div>
           <div
             style={{
@@ -266,10 +277,12 @@ export default function AboutPage() {
               SAY HELLO
             </span>
             <a
-              href="mailto:hello@jewelcase.reviews"
+              href="https://x.com/jewelcasereview"
+              target="_blank"
+              rel="noreferrer"
               style={{ fontSize: 15, fontWeight: 700 }}
             >
-              hello@jewelcase.reviews
+              @jewelcasereview
             </a>
             <span
               style={{ fontSize: 14, color: "var(--sub)", lineHeight: 1.6 }}
