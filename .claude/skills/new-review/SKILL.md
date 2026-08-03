@@ -86,10 +86,10 @@ The four values, worst to best:
 
 | Code | Meaning | Points |
 |---|---|---|
-| `S` | Skip | 1 |
-| `P` | Play | 2 |
-| `R` | Repeat | 3 |
-| `F` | Favorite | 4 |
+| `S` | Skip | 0 |
+| `P` | Play | 3 |
+| `R` | Repeat | 4 |
+| `F` | Favorite | 5 |
 
 Every track needs a value. If any are missing, list only the missing track
 numbers and ask again — don't reprint the whole list.
@@ -101,39 +101,46 @@ appear on the site.
 
 ## Step 3 — Convert to a spin rating
 
-Average the points across all tracks (1.0–4.0), then map to the site's 0–5
-scale:
+The points scale is already 0–5, so there is **no conversion formula**. The
+rating is the duration-weighted average of the track points:
 
 ```
-raw    = (average - 1) / 3 * 5
-rating = round(raw * 2) / 2      # nearest half, ties round UP
+rating = Σ(track_seconds × points) / Σ(track_seconds)
+         rounded to the nearest half, ties round UP
 ```
 
-Anchors:
+Weighting by duration is deliberate. Unweighted, a 1:14 interlude counts as much
+as a 4:15 single, which badly over-penalizes records with a lot of short
+connective material. A favorite you love for ten minutes should outweigh a
+favorite you love for two.
 
-| Avg (1–4) | Raw | Rating |
+Anchors — these line up with the tier labels in `lib/constants.ts` by design:
+
+| Every track is… | Rating | Tier |
 |---|---|---|
-| 1.0 | 0.00 | 0.0 |
-| 2.0 | 1.67 | 1.5 |
-| 2.5 | 2.50 | 2.5 |
-| 3.0 | 3.33 | 3.5 |
-| 3.4 | 4.00 | 4.0 |
-| 3.6 | 4.33 | 4.5 |
-| 4.0 | 5.00 | 5.0 |
+| Skip | 0.0 | — |
+| Play | 3.0 | "Good. A few keepers." |
+| Repeat | 4.0 | "Great. Earns its replays." |
+| Favorite | 5.0 | "Instant classic. Shelf royalty." |
 
-Report it like this — the number alone isn't enough context to judge it:
+Skip is a cliff (0 → 3) while the three positive grades are compressed into a
+2-point band. That is intentional: the score is driven mostly by how much of the
+record you would skip, and only fine-tuned by how much you love the rest —
+which is what the About page promises the number means.
+
+> The score means one thing: how likely I am to put it back in the player.
+
+Report it like this. The number alone isn't enough context to judge:
 
 ```
-12 tracks — 4F, 5R, 2P, 1S
-Average 3.17 / 4  →  raw 3.61  →  suggested rating 3.5
+16 tracks — 4F, 5R, 3P, 4S
+Σ(duration × points) = 10,650 over 3,045 seconds
+Weighted average 3.498  →  suggested rating 3.5
 Tier: "Very good, with reservations."
 ```
 
-The tier labels live in `lib/constants.ts`. Always quote the matching one.
-
-A straight mean flattens texture: 3 favorites and 3 skips average the same as 6
-plays, but they are not the same record. If the distribution is polarized, say
-so when you report the number.
+Always quote the matching tier label. If the distribution is polarized — a pile
+of favorites *and* a pile of skips — say so, because the average alone hides it.
 
 **WAIT.** The rating is a *suggestion*. Take the user's override without
 argument.
@@ -189,9 +196,7 @@ judgments. Song names in caps, every time.
 
 ## Step 7 — Output
 
-Two artifacts.
-
-**1. Paste-ready block** for `/admin`, matching the form fields:
+One paste-ready block for `/admin`, matching the form fields:
 
 ```
 ARTIST          Tyler, the Creator
@@ -219,6 +224,10 @@ RING OF FIRE · 3:45
 
 SKIP TRACKS
 HOLLOW YEARS · 2:58
+
+TRACK RATINGS
+{"scale":{"S":0,"P":3,"R":4,"F":5},"weighted":"duration","weightedAverage":3.498,
+ "tracks":[{"n":1,"name":"RING OF FIRE","time":"3:45","rating":"F"}]}
 ```
 
 Never output a `slug` or `catalog_num`. Both are assigned by the database —
@@ -232,24 +241,16 @@ from the admin.
 `is_featured` has a unique partial index — only one review can be featured at a
 time. Setting it unsets the current one.
 
-**2. Track ratings sidecar** at `content/reviews/<artist-slug>-<album-slug>.json`,
-so the internal ratings survive for later use:
+The `TRACK RATINGS` block goes in the admin field of the same name and is stored
+in `reviews.track_ratings` (jsonb). It records the scale and weighting alongside
+the grades, so if the points scale ever changes again, every published review
+can be recomputed from stored data instead of by re-listening. Always emit it —
+it is the only place the S/P/R/F grades survive.
 
-```json
-{
-  "artist": "Tyler, the Creator",
-  "album": "Chromakopia",
-  "catalogNum": null,
-  "ratedAt": "2026-08-03",
-  "average": 3.17,
-  "rating": 3.5,
-  "tracks": [
-    { "n": 1, "name": "RING OF FIRE", "time": "3:45", "rating": "F" }
-  ]
-}
-```
-
-Fill in `catalogNum` once the review is saved and the number is known.
+Genres are handled by the database: a trigger keeps `artists.genres` in sync
+with the distinct genres of that artist's PUBLISHED reviews. Never set
+`artists.genres` by hand, and expect it to stay empty until the review is
+published.
 
 ---
 
@@ -276,7 +277,9 @@ and `003_jc_number_slugs.sql`:
 | `label` | text | step 1, uppercase |
 | `status` | enum | always `DRAFT` from this skill |
 | `is_retrospective` | bool | suggested in step 1 |
+| `track_ratings` | jsonb | steps 2 and 3, internal grades plus the scale used |
 | `catalog_num`, `slug` | — | **database-assigned, never set** |
+| `artists.genres` | text[] | **trigger-maintained, never set** |
 
 Artists are matched by name first; only create a new `artists` row if none
 exists. Artist slugs stay name-based (`slugify(name)`) — the JC-number scheme

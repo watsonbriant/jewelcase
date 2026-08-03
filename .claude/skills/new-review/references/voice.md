@@ -84,6 +84,20 @@ One or two sentences, subheading duty. Sharpens or complicates the title — nev
 restates it. Can be very short: "Two closers too many." "The pocket should be
 studied in labs."
 
+## Punctuation
+
+**No em dashes. No en dashes. Ever.** They are the clearest tell that a machine
+wrote the sentence. Use a period, a comma, a colon, or parentheses instead, and
+most of the time the sentence gets better for it:
+
+- `seven names — Drive Like I Do, Bigsleep — before` → `seven names, Drive Like I Do and Bigsleep among them, before`
+- `harmless — THE 1975 and 12 are connective tissue` → `harmless. THE 1975 and 12 are connective tissue`
+- `best LP of the year — a spread that wide means` → `best LP of the year. A spread that wide means`
+
+Ordinary hyphens in compound words (`full-length`, `sub-90-second`) are fine.
+The middle dot in track lines (`CHOCOLATE · 3:47`) is a separator, not a dash,
+and `encodeTracks` expects it.
+
 ## Never do this
 
 - Paraphrase a press release or a bio page

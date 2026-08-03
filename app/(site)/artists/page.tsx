@@ -3,8 +3,11 @@ import { DiscRating } from "@/components/DiscRating";
 import { ImageSlot } from "@/components/ImageSlot";
 import { getArtistsWithReviews } from "@/lib/data";
 import { catalogLabel } from "@/lib/format";
+import { getArtworkUrl } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
+
+export const metadata = { title: "Artists" };
 
 export default async function ArtistsPage() {
   const list = await getArtistsWithReviews();
@@ -89,7 +92,11 @@ export default async function ArtistsPage() {
                   flexShrink: 0,
                 }}
               >
-                <ImageSlot shape="circle" label={artist.name} />
+                <ImageSlot
+                  shape="circle"
+                  label={artist.name}
+                  src={getArtworkUrl(artist.photoPath)}
+                />
               </span>
               <span
                 style={{

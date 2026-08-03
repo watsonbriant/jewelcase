@@ -43,6 +43,15 @@ type AdminRow = {
   runtime: string;
   label: string;
   art_path: string | null;
+  track_ratings: string;
+};
+
+type AdminArtist = {
+  id: string;
+  slug: string;
+  name: string;
+  photo_path: string | null;
+  review_count: number;
 };
 
 type Draft = {
@@ -64,6 +73,7 @@ type Draft = {
   runtime: string;
   label: string;
   art_path: string | null;
+  track_ratings: string;
   catalog_num?: number;
   slug?: string;
   published_at?: string | null;
@@ -89,6 +99,7 @@ function emptyDraft(): Draft {
     runtime: "",
     label: "",
     art_path: null,
+    track_ratings: "",
   };
 }
 
@@ -99,6 +110,23 @@ async function uploadArtwork(
 ) {
   const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
   const path = `reviews/${reviewId}.${ext}`;
+  const { error } = await supabase.storage.from("artwork").upload(path, file, {
+    upsert: true,
+    contentType: file.type || "image/jpeg",
+  });
+  if (error) throw error;
+  return path;
+}
+
+// Artist photos share the `artwork` bucket. Its policies are bucket-wide
+// rather than path-scoped, so no new bucket or policy is needed.
+async function uploadArtistPhoto(
+  supabase: ReturnType<typeof createClient>,
+  artistId: string,
+  file: File,
+) {
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+  const path = `artists/${artistId}.${ext}`;
   const { error } = await supabase.storage.from("artwork").upload(path, file, {
     upsert: true,
     contentType: file.type || "image/jpeg",
@@ -142,7 +170,7 @@ async function ensureArtist(
 export default function AdminPage() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
-  const [view, setView] = useState<"list" | "edit">("list");
+  const [view, setView] = useState<"list" | "edit" | "artists">("list");
   const [reviews, setReviews] = useState<AdminRow[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft());
@@ -151,6 +179,11 @@ export default function AdminPage() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [artists, setArtists] = useState<AdminArtist[]>([]);
+  const [artistDrafts, setArtistDrafts] = useState<
+    Record<string, { name: string; slug: string }>
+  >({});
+  const [busyArtist, setBusyArtist] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -189,19 +222,48 @@ export default function AdminPage() {
         runtime: r.runtime ?? "",
         label: r.label ?? "",
         art_path: r.art_path,
+        track_ratings:
+          r.track_ratings && Object.keys(r.track_ratings).length
+            ? JSON.stringify(r.track_ratings, null, 2)
+            : "",
       };
     });
     setReviews(rows);
   }, []);
 
+  const loadArtists = useCallback(async () => {
+    const supabase = createClient();
+    // The embedded count covers every review, not just published ones,
+    // because ANY review blocks deletion under the ON DELETE RESTRICT FK.
+    const { data, error: aError } = await supabase
+      .from("artists")
+      .select("*, reviews(count)")
+      .order("name");
+    if (aError) throw aError;
+
+    const rows: AdminArtist[] = (data ?? []).map((a) => ({
+      id: a.id,
+      slug: a.slug,
+      name: a.name,
+      photo_path: a.photo_path,
+      review_count: Array.isArray(a.reviews) ? (a.reviews[0]?.count ?? 0) : 0,
+    }));
+    setArtists(rows);
+    setArtistDrafts(
+      Object.fromEntries(
+        rows.map((r) => [r.id, { name: r.name, slug: r.slug }]),
+      ),
+    );
+  }, []);
+
   useEffect(() => {
-    load()
+    Promise.all([load(), loadArtists()])
       .then(() => setReady(true))
       .catch((e: Error) => {
         setError(e.message);
         setReady(true);
       });
-  }, [load]);
+  }, [load, loadArtists]);
 
   const setField =
     (name: keyof Draft) =>
@@ -228,6 +290,26 @@ export default function AdminPage() {
       const supabase = createClient();
       const artistId = await ensureArtist(supabase, draft.artist);
 
+      // track_ratings is jsonb with a check constraint requiring an object,
+      // so reject anything else here rather than letting Postgres do it.
+      let trackRatings: Record<string, unknown> = {};
+      if (draft.track_ratings.trim()) {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(draft.track_ratings);
+        } catch {
+          throw new Error("TRACK RATINGS is not valid JSON");
+        }
+        if (
+          typeof parsed !== "object" ||
+          parsed === null ||
+          Array.isArray(parsed)
+        ) {
+          throw new Error("TRACK RATINGS must be a JSON object");
+        }
+        trackRatings = parsed as Record<string, unknown>;
+      }
+
       // slug is a generated column (jc-0001, derived from catalog_num).
       // Postgres rejects any explicit value, so it must stay out of the payload.
       const payload = {
@@ -249,6 +331,7 @@ export default function AdminPage() {
         status,
         is_featured: draft.is_featured,
         is_retrospective: draft.is_retrospective,
+        track_ratings: trackRatings,
         published_at:
           status === "PUBLISHED"
             ? draft.published_at ?? new Date().toISOString()
@@ -304,6 +387,74 @@ export default function AdminPage() {
     }
   };
 
+  const saveArtist = async (id: string) => {
+    const d = artistDrafts[id];
+    if (!d) return;
+    const name = d.name.trim();
+    if (!name) {
+      setError("Artist name is required");
+      return;
+    }
+    // Falling back to the name keeps the slug from ever going empty.
+    const slug = slugify(d.slug.trim()) || slugify(name);
+
+    setBusyArtist(id);
+    const supabase = createClient();
+    const { error: uError } = await supabase
+      .from("artists")
+      .update({ name, slug })
+      .eq("id", id);
+    setBusyArtist(null);
+    if (uError) {
+      setError(uError.message);
+      return;
+    }
+    setError(null);
+    await Promise.all([load(), loadArtists()]);
+  };
+
+  const onArtistPhoto = async (artist: AdminArtist, file: File) => {
+    setBusyArtist(artist.id);
+    try {
+      const supabase = createClient();
+      const path = await uploadArtistPhoto(supabase, artist.id, file);
+      const { error: uError } = await supabase
+        .from("artists")
+        .update({ photo_path: path })
+        .eq("id", artist.id);
+      if (uError) throw uError;
+      setError(null);
+      await loadArtists();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusyArtist(null);
+    }
+  };
+
+  const removeArtist = async (artist: AdminArtist) => {
+    if (artist.review_count > 0) return;
+    if (!confirm(`Delete "${artist.name}"? This can't be undone.`)) return;
+
+    setBusyArtist(artist.id);
+    const supabase = createClient();
+    // Drop the photo first; a deleted row leaves no way to find the object.
+    if (artist.photo_path) {
+      await supabase.storage.from("artwork").remove([artist.photo_path]);
+    }
+    const { error: dError } = await supabase
+      .from("artists")
+      .delete()
+      .eq("id", artist.id);
+    setBusyArtist(null);
+    if (dError) {
+      setError(dError.message);
+      return;
+    }
+    setError(null);
+    await loadArtists();
+  };
+
   const remove = async (id: string, album: string) => {
     if (!confirm(`Delete "${album}"? This can't be undone.`)) return;
     const supabase = createClient();
@@ -348,6 +499,29 @@ export default function AdminPage() {
         }}
       >
         <Logo admin href="/" />
+        <div style={{ display: "flex", gap: 8 }}>
+          {(["list", "artists"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setView(v)}
+              style={{
+                background: view === v ? "var(--panel)" : "none",
+                border: "1px solid",
+                borderColor: view === v ? "var(--line)" : "transparent",
+                borderRadius: 99,
+                cursor: "pointer",
+                fontFamily: "var(--font-mono)",
+                fontSize: 12,
+                letterSpacing: "0.12em",
+                color: view === v ? "var(--ink)" : "var(--meta)",
+                padding: "6px 14px",
+              }}
+            >
+              {v === "list" ? "REVIEWS" : "ARTISTS"}
+            </button>
+          ))}
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16, marginLeft: "auto" }}>
           <button
             type="button"
@@ -554,6 +728,7 @@ export default function AdminPage() {
                           runtime: r.runtime,
                           label: r.label,
                           art_path: r.art_path,
+                          track_ratings: r.track_ratings,
                           catalog_num: r.catalog_num,
                           slug: r.slug,
                           published_at: r.published_at,
@@ -573,6 +748,166 @@ export default function AdminPage() {
                   </span>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {view === "artists" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <h1
+                style={{
+                  margin: 0,
+                  fontWeight: 900,
+                  fontSize: 26,
+                  letterSpacing: "-0.02em",
+                }}
+              >
+                Artists
+              </h1>
+              <span style={labelText}>
+                {artists.length} TOTAL · REMOVED AUTOMATICALLY WHEN THEIR LAST
+                REVIEW IS DELETED
+              </span>
+            </div>
+
+            {artists.length === 0 && (
+              <p style={{ margin: 0, color: "var(--sub)", fontSize: 15 }}>
+                No artists yet. They are created automatically when you save a
+                review.
+              </p>
+            )}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {artists.map((a) => {
+                const d = artistDrafts[a.id] ?? { name: a.name, slug: a.slug };
+                const busy = busyArtist === a.id;
+                const dirty = d.name !== a.name || d.slug !== a.slug;
+                const locked = a.review_count > 0;
+                return (
+                  <div
+                    key={a.id}
+                    style={{
+                      ...panelStyle,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: 18,
+                      opacity: busy ? 0.6 : 1,
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 72,
+                        height: 72,
+                        flexShrink: 0,
+                        display: "block",
+                      }}
+                    >
+                      <ImageSlot
+                        shape="circle"
+                        label={a.name}
+                        src={getArtworkUrl(a.photo_path)}
+                      />
+                    </span>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 8,
+                        flex: "1 1 240px",
+                        minWidth: 0,
+                      }}
+                    >
+                      <input
+                        value={d.name}
+                        onChange={(e) =>
+                          setArtistDrafts((prev) => ({
+                            ...prev,
+                            [a.id]: { ...d, name: e.target.value },
+                          }))
+                        }
+                        style={fieldStyle}
+                      />
+                      <input
+                        value={d.slug}
+                        onChange={(e) =>
+                          setArtistDrafts((prev) => ({
+                            ...prev,
+                            [a.id]: { ...d, slug: e.target.value },
+                          }))
+                        }
+                        style={monoArea}
+                      />
+                    </div>
+
+                    <span style={{ ...labelText, whiteSpace: "nowrap" }}>
+                      {a.review_count}{" "}
+                      {a.review_count === 1 ? "REVIEW" : "REVIEWS"}
+                    </span>
+
+                    <span
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        marginLeft: "auto",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <label
+                        style={{
+                          ...outlineBtn,
+                          cursor: busy ? "default" : "pointer",
+                        }}
+                      >
+                        PHOTO
+                        <input
+                          type="file"
+                          accept="image/*"
+                          hidden
+                          disabled={busy}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            e.target.value = "";
+                            if (file) onArtistPhoto(a, file);
+                          }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        disabled={busy || !dirty}
+                        onClick={() => saveArtist(a.id)}
+                        style={{
+                          ...outlineBtn,
+                          opacity: dirty ? 1 : 0.4,
+                          cursor: dirty && !busy ? "pointer" : "default",
+                        }}
+                      >
+                        SAVE
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy || locked}
+                        title={
+                          locked
+                            ? "Delete this artist's reviews first"
+                            : undefined
+                        }
+                        onClick={() => removeArtist(a)}
+                        style={{
+                          ...outlineBtn,
+                          color: locked ? "var(--meta)" : "var(--danger)",
+                          opacity: locked ? 0.4 : 1,
+                          cursor: locked || busy ? "default" : "pointer",
+                        }}
+                      >
+                        DELETE
+                      </button>
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -904,6 +1239,14 @@ export default function AdminPage() {
                     value={draft.skip}
                     onChange={setField("skip")}
                     rows={2}
+                    style={monoArea}
+                  />
+                  <span style={labelText}>TRACK RATINGS · JSON</span>
+                  <textarea
+                    value={draft.track_ratings}
+                    onChange={setField("track_ratings")}
+                    rows={4}
+                    placeholder='{"scale":{"S":0,"P":3,"R":4,"F":5},"tracks":[…]}'
                     style={monoArea}
                   />
                 </div>

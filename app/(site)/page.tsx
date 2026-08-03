@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import { DiscRating } from "@/components/DiscRating";
 import { ImageSlot } from "@/components/ImageSlot";
 import { getHomeData } from "@/lib/data";
@@ -6,6 +7,16 @@ import { catalogLabel, typeLabel } from "@/lib/format";
 import { getArtworkUrl } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
+
+const artistPill: CSSProperties = {
+  padding: "3px 10px",
+  borderRadius: 99,
+  border: "1px solid var(--line)",
+  color: "var(--sub)",
+  fontFamily: "var(--font-mono)",
+  fontSize: 11,
+  whiteSpace: "nowrap",
+};
 
 export default async function HomePage() {
   const { featured, latest, archive } = await getHomeData();
@@ -85,18 +96,23 @@ export default async function HomePage() {
             {catalogLabel(featured.catalogNum)} · {typeLabel(featured.type)} ·{" "}
             {featured.publishedAt}
           </div>
-          <h1
-            style={{
-              margin: 0,
-              fontWeight: 900,
-              fontSize: "clamp(36px, 4.2vw, 60px)",
-              letterSpacing: "-0.03em",
-              lineHeight: 1.02,
-              textWrap: "pretty",
-            }}
+          <Link
+            href={`/reviews/${featured.slug}`}
+            style={{ color: "inherit", textDecoration: "none" }}
           >
-            {featured.title}
-          </h1>
+            <h1
+              style={{
+                margin: 0,
+                fontWeight: 900,
+                fontSize: "clamp(36px, 4.2vw, 60px)",
+                letterSpacing: "-0.03em",
+                lineHeight: 1.02,
+                textWrap: "pretty",
+              }}
+            >
+              {featured.title}
+            </h1>
+          </Link>
           <DiscRating
             rating={featured.rating}
             size={20}
@@ -211,6 +227,9 @@ export default async function HomePage() {
               >
                 {r.title}
               </div>
+              <span style={{ ...artistPill, alignSelf: "flex-start" }}>
+                {r.artistName}
+              </span>
               <DiscRating rating={r.rating} size={15} scoreSize={15} gap={10} />
             </Link>
           ))}
@@ -284,10 +303,25 @@ export default async function HomePage() {
               >
                 {catalogLabel(r.catalogNum)}
               </span>
-              <span style={{ fontWeight: 700, fontSize: 17, color: "var(--ink)" }}>
-                {r.album}{" "}
-                <span style={{ fontWeight: 400, color: "var(--meta)" }}>
-                  · {r.blurb}
+              <span
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "6px 12px",
+                  minWidth: 0,
+                }}
+              >
+                <span
+                  style={{ fontWeight: 700, fontSize: 17, color: "var(--ink)" }}
+                >
+                  {r.album}
+                </span>
+                <span style={artistPill}>{r.artistName}</span>
+                <span
+                  style={{ fontWeight: 400, fontSize: 17, color: "var(--meta)" }}
+                >
+                  {r.blurb}
                 </span>
               </span>
               <span

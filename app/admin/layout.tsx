@@ -1,0 +1,11 @@
+// admin/page.tsx is a client component and cannot export metadata itself,
+// so the title lives here.
+export const metadata = { title: "Admin" };
+
+export default function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return children;
+}

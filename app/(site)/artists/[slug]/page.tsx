@@ -8,6 +8,16 @@ import { getArtworkUrl } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+  const artist = await getArtistBySlug(slug);
+  return { title: artist?.name ?? "Artist not found" };
+}
+
 export default async function ArtistPage({
   params,
 }: {
@@ -41,7 +51,11 @@ export default async function ArtistPage({
           }}
         >
           <div style={{ width: 180, height: 180, flexShrink: 0 }}>
-            <ImageSlot shape="circle" label={artist.name} />
+            <ImageSlot
+              shape="circle"
+              label={artist.name}
+              src={getArtworkUrl(artist.photoPath)}
+            />
           </div>
           <div
             style={{

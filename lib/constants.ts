@@ -10,3 +10,15 @@ export const ratingTiers = [
   { rating: 1, label: "Barely worth the shelf space." },
   { rating: 0.5, label: "A warning to others." },
 ];
+
+/**
+ * Tier label for a score. Ratings are constrained to clean half steps, so this
+ * is an exact match in practice; the <= scan only matters for 0.0, which has no
+ * tier of its own and falls through to the lowest one.
+ */
+export function ratingTierLabel(rating: number): string {
+  const tier =
+    ratingTiers.find((t) => t.rating <= rating) ??
+    ratingTiers[ratingTiers.length - 1];
+  return tier.label;
+}

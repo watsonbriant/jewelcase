@@ -8,10 +8,27 @@ import {
   getRelatedReviews,
   getReviewBySlug,
 } from "@/lib/data";
+import { ratingTierLabel } from "@/lib/constants";
 import { catalogLabel, typeLabel } from "@/lib/format";
 import { getArtworkUrl } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+  const review = await getReviewBySlug(slug);
+  if (!review) return { title: "Review not found" };
+  // Self-titled releases would otherwise read "The 1975 by The 1975".
+  const title =
+    review.album === review.artistName
+      ? review.album
+      : `${review.album} by ${review.artistName}`;
+  return { title, description: review.blurb || undefined };
+}
 
 export default async function ReviewPage({
   params,
@@ -138,21 +155,42 @@ export default async function ReviewPage({
             <div
               style={{
                 display: "flex",
-                alignItems: "center",
-                gap: 18,
-                padding: "20px 24px",
-                background: "var(--panel)",
-                border: "1px solid var(--line)",
-                borderRadius: 12,
-                width: "fit-content",
+                flexDirection: "column",
+                alignItems: "flex-start",
+                gap: 10,
               }}
             >
-              <DiscRating
-                rating={review.rating}
-                size={24}
-                scoreSize={28}
-                gap={18}
-              />
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 18,
+                  padding: "20px 24px",
+                  background: "var(--panel)",
+                  border: "1px solid var(--line)",
+                  borderRadius: 12,
+                  width: "fit-content",
+                }}
+              >
+                <DiscRating
+                  rating={review.rating}
+                  size={24}
+                  scoreSize={28}
+                  gap={18}
+                />
+              </div>
+              <span
+                style={{
+                  padding: "5px 12px",
+                  borderRadius: 99,
+                  border: "1px solid var(--line)",
+                  color: "var(--sub)",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 12,
+                }}
+              >
+                {ratingTierLabel(review.rating)}
+              </span>
             </div>
           </div>
         </div>

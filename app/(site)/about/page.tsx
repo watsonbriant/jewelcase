@@ -2,6 +2,8 @@ import { DiscRating } from "@/components/DiscRating";
 import { ImageSlot } from "@/components/ImageSlot";
 import { ratingTiers } from "@/lib/constants";
 
+export const metadata = { title: "About" };
+
 export default function AboutPage() {
   return (
     <>

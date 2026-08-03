@@ -19,7 +19,10 @@ const spaceMono = Space_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Jewel Case",
+  title: {
+    default: "Jewel Case",
+    template: "%s – Jewel Case",
+  },
   description:
     "Music reviews from someone who alphabetized their CD tower.",
   icons: {

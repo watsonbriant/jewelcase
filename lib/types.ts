@@ -71,5 +71,16 @@ export type DbReview = {
   status: ReviewStatus;
   is_featured: boolean;
   is_retrospective: boolean;
+  track_ratings: TrackRatings;
   published_at: string | null;
+};
+
+/** Internal S/P/R/F grades. Never rendered on the site. */
+export type TrackGrade = "S" | "P" | "R" | "F";
+
+export type TrackRatings = {
+  scale?: Record<TrackGrade, number>;
+  weighted?: "duration";
+  weightedAverage?: number;
+  tracks?: { n: number; name: string; time: string; rating: TrackGrade }[];
 };
