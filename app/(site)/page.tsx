@@ -32,8 +32,7 @@ export default async function HomePage() {
           The shelf is empty
         </h1>
         <p style={{ margin: 0, lineHeight: 1.6 }}>
-          Run the seed SQL, then publish a review from{" "}
-          <Link href="/admin">/admin</Link>.
+          Publish your first review from <Link href="/admin">/admin</Link>.
         </p>
       </main>
     );

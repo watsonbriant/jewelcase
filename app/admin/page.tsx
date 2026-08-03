@@ -227,11 +227,9 @@ export default function AdminPage() {
     try {
       const supabase = createClient();
       const artistId = await ensureArtist(supabase, draft.artist);
-      const slug =
-        draft.slug ||
-        slugify(draft.album) ||
-        `review-${Date.now()}`;
 
+      // slug is a generated column (jc-0001, derived from catalog_num).
+      // Postgres rejects any explicit value, so it must stay out of the payload.
       const payload = {
         album: draft.album.trim(),
         artist_id: artistId,
@@ -251,7 +249,6 @@ export default function AdminPage() {
         status,
         is_featured: draft.is_featured,
         is_retrospective: draft.is_retrospective,
-        slug,
         published_at:
           status === "PUBLISHED"
             ? draft.published_at ?? new Date().toISOString()
